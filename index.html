@@ -1,143 +1,200 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Синхронный раундовый таймер</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      text-align: center;
-      background: #f5f5f5;
-      padding: 40px;
-    }
-    input {
-      padding: 10px;
-      margin: 5px;
-      font-size: 18px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 18px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-    .timer {
-      font-size: 48px;
-      margin-top: 30px;
-    }
-    .round {
-      font-size: 32px;
-      margin-top: 10px;
-    }
-    #hostControls {
-      margin: 20px 0;
-      padding: 15px;
-      background: #e9e9e9;
-      border-radius: 8px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Синхронный раундовый таймер</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .timer-container {
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        #timer {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .settings {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .settings input {
+            width: 60px;
+            padding: 5px;
+        }
+    </style>
 </head>
 <body>
-
-  <h1>Синхронный раундовый таймер</h1>
-  
-  <div id="hostControls">
-    <label>Количество раундов: <input type="number" id="rounds" value="5"></label><br>
-    <label>Длительность раунда (мин:сек): <input type="text" id="duration" value="5:00"></label><br>
-    <button onclick="startTimer()">Старт (Только для хоста)</button>
-  </div>
-
-  <div class="timer" id="timePassed">⌛ 00:00</div>
-  <div class="round" id="roundStatus">🎯 Раунд: -</div>
-  <div class="round" id="timeToNext">⏳ До следующего: -</div>
-
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.4/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.4/firebase-database.js"></script>
-  
-  <script>
-    // Конфигурация Firebase (замените на свою!)
+    <h1>Синхронный раундовый таймер</h1>
     
-const firebaseConfig = {
-  apiKey: "AIzaSyD6cDgXRTBmXsjWLsaDgFvGh2C1H6DSHgA",
-  authDomain: "supertimer-dc53c.firebaseapp.com",
-  databaseURL: "https://supertimer-dc53c-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "supertimer-dc53c",
-  storageBucket: "supertimer-dc53c.appspot.com",
-  messagingSenderId: "624576534672",
-  appId: "1:624576534672:web:5eae9e01aa1ba8114c6015",
-  measurementId: "G-RFT5BGWRB3"
-};
+    <div class="settings">
+        <div>
+            <label for="rounds">Количество раундов:</label>
+            <input type="number" id="rounds" min="1" value="5">
+        </div>
+        <div>
+            <label for="duration">Длительность раунда (мин):</label>
+            <input type="number" id="duration" min="1" value="5">
+        </div>
+    </div>
+    
+    <button id="startBtn">Старт (Только для хоста)</button>
+    <button id="resetBtn" disabled>Сбросить</button>
+    
+    <div class="timer-container">
+        <div id="timer">05:00</div>
+        <div id="roundInfo">Раунд: -</div>
+        <div id="nextRoundInfo">До следующего: -</div>
+    </div>
 
+    <script>
+        // Game state
+        const game = {
+            settings: {
+                rounds: 5,
+                roundDuration: 300 // 5 minutes in seconds
+            },
+            state: {
+                currentRound: 0,
+                timeLeft: 0,
+                isRunning: false,
+                timerInterval: null
+            },
+            elements: {
+                timer: document.getElementById('timer'),
+                roundInfo: document.getElementById('roundInfo'),
+                nextRoundInfo: document.getElementById('nextRoundInfo'),
+                startBtn: document.getElementById('startBtn'),
+                resetBtn: document.getElementById('resetBtn'),
+                roundsInput: document.getElementById('rounds'),
+                durationInput: document.getElementById('duration')
+            }
+        };
 
-    // Инициализация Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+        // Initialize
+        function init() {
+            game.elements.startBtn.addEventListener('click', startGame);
+            game.elements.resetBtn.addEventListener('click', resetGame);
+            
+            game.elements.roundsInput.addEventListener('change', updateSettings);
+            game.elements.durationInput.addEventListener('change', updateSettings);
+            
+            updateSettings();
+            updateDisplay();
+        }
 
-    let startTime;
-    let interval;
-    let totalRounds = 5;
-    let roundDuration = 300;
-    let isHost = window.location.hash === '#host';
+        // Update game settings from inputs
+        function updateSettings() {
+            game.settings.rounds = parseInt(game.elements.roundsInput.value) || 5;
+            game.settings.roundDuration = (parseInt(game.elements.durationInput.value) || 5) * 60;
+            
+            if (!game.state.isRunning) {
+                game.state.timeLeft = game.settings.roundDuration;
+                updateDisplay();
+            }
+        }
 
-    // Показываем кнопки только хосту
-    if (!isHost) {
-      document.getElementById('hostControls').style.display = 'none';
-    }
+        // Start the game
+        function startGame() {
+            if (game.state.isRunning) return;
+            
+            game.state = {
+                currentRound: 1,
+                timeLeft: game.settings.roundDuration,
+                isRunning: true,
+                timerInterval: setInterval(updateTimer, 1000)
+            };
+            
+            game.elements.startBtn.disabled = true;
+            game.elements.resetBtn.disabled = false;
+            updateDisplay();
+        }
 
-    function startTimer() {
-      const roundsInput = document.getElementById('rounds').value;
-      const durationInput = document.getElementById('duration').value;
+        // Update timer each second
+        function updateTimer() {
+            game.state.timeLeft--;
+            
+            if (game.state.timeLeft <= 0) {
+                if (game.state.currentRound >= game.settings.rounds) {
+                    endGame();
+                } else {
+                    nextRound();
+                }
+            }
+            
+            updateDisplay();
+        }
 
-      totalRounds = parseInt(roundsInput);
-      const [min, sec] = durationInput.split(':').map(Number);
-      roundDuration = min * 60 + sec;
+        // Move to next round
+        function nextRound() {
+            game.state.currentRound++;
+            game.state.timeLeft = game.settings.roundDuration;
+        }
 
-      const timerData = {
-        startTime: Date.now(),
-        totalRounds: totalRounds,
-        roundDuration: roundDuration
-      };
+        // End the game
+        function endGame() {
+            clearInterval(game.state.timerInterval);
+            game.state.isRunning = false;
+            game.elements.startBtn.disabled = false;
+        }
 
-      // Хост отправляет данные на сервер
-      database.ref('timer').set(timerData);
-    }
+        // Reset the game
+        function resetGame() {
+            clearInterval(game.state.timerInterval);
+            game.state = {
+                currentRound: 0,
+                timeLeft: game.settings.roundDuration,
+                isRunning: false,
+                timerInterval: null
+            };
+            
+            game.elements.startBtn.disabled = false;
+            game.elements.resetBtn.disabled = true;
+            updateDisplay();
+        }
 
-    // Слушаем изменения в Firebase
-    database.ref('timer').on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        startTime = new Date(data.startTime);
-        totalRounds = data.totalRounds;
-        roundDuration = data.roundDuration;
-        
-        clearInterval(interval);
-        interval = setInterval(updateTimer, 500);
-      }
-    });
+        // Update display
+        function updateDisplay() {
+            const minutes = Math.floor(game.state.timeLeft / 60);
+            const seconds = game.state.timeLeft % 60;
+            
+            game.elements.timer.textContent = 
+                `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            
+            game.elements.roundInfo.textContent = 
+                `Раунд: ${game.state.currentRound > 0 ? game.state.currentRound : '-'}/${game.settings.rounds}`;
+            
+            game.elements.nextRoundInfo.textContent = 
+                game.state.isRunning ? `До следующего: ${minutes}:${String(seconds).padStart(2, '0')}` : 'До следующего: -';
+        }
 
-    function updateTimer() {
-      const now = new Date();
-      const secondsPassed = Math.floor((now - startTime) / 1000);
-      const currentRound = Math.min(Math.floor(secondsPassed / roundDuration) + 1, totalRounds);
-      const timeInCurrentRound = secondsPassed % roundDuration;
-      const timeLeft = roundDuration - timeInCurrentRound;
-
-      const minPassed = Math.floor(secondsPassed / 60).toString().padStart(2, '0');
-      const secPassed = (secondsPassed % 60).toString().padStart(2, '0');
-      document.getElementById('timePassed').textContent = `⌛ ${minPassed}:${secPassed}`;
-      document.getElementById('roundStatus').textContent = currentRound > totalRounds
-        ? `✅ Все раунды завершены`
-        : `🎯 Раунд ${currentRound} из ${totalRounds}`;
-
-      if (currentRound <= totalRounds) {
-        const minLeft = Math.floor(timeLeft / 60).toString().padStart(2, '0');
-        const secLeft = (timeLeft % 60).toString().padStart(2, '0');
-        document.getElementById('timeToNext').textContent = `⏳ До следующего: ${minLeft}:${secLeft}`;
-      } else {
-        document.getElementById('timeToNext').textContent = `⏳ До следующего: -`;
-      }
-    }
-  </script>
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
 </body>
 </html>
