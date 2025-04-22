@@ -45,6 +45,11 @@
       margin: 0 5px;
     }
   </style>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 </head>
 <body>
   <h1>Синхронный таймер</h1>
@@ -68,12 +73,8 @@
     <button id="resetBtn" disabled>СБРОС</button>
   </div>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-  
   <script>
-    // Конфигурация Firebase (убедитесь, что данные верные!)
+    // Конфигурация Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyDoCb9XRTBwXsjWLsaDgFvGh2c1H6DSHgA",
       authDomain: "superTimer-dc53c.firebaseapp.com",
@@ -92,19 +93,33 @@
     const isHost = window.location.hash === "#host";
     if (!isHost) document.getElementById('hostPanel').style.display = 'none';
 
-    // Элементы управления
-    const startBtn = document.getElementById('startBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const resetBtn = document.getElementById('resetBtn');
+    // Аутентификация хоста
+    if (isHost) {
+      firebase.auth().signInAnonymously()
+        .then(() => {
+          console.log("Хост авторизован в Firebase");
+          initTimerControls(); // Инициализация кнопок после авторизации
+        })
+        .catch(error => {
+          console.error("Ошибка авторизации:", error);
+          alert("Ошибка доступа! Обновите страницу (Ctrl+F5)");
+        });
+    }
 
-    // Обработчик кнопки "Старт"
-    startBtn.addEventListener('click', () => {
+    function initTimerControls() {
+      // Обработчики кнопок
+      document.getElementById('startBtn').addEventListener('click', startTimer);
+      document.getElementById('pauseBtn').addEventListener('click', togglePause);
+      document.getElementById('resetBtn').addEventListener('click', resetTimer);
+    }
+
+    function startTimer() {
       const totalRounds = parseInt(document.getElementById('roundsInput').value) || 3;
       const minutes = parseInt(document.getElementById('minutesInput').value) || 0;
       const seconds = parseInt(document.getElementById('secondsInput').value) || 0;
       
       if (minutes === 0 && seconds === 0) {
-        alert("Длительность раунда не может быть 0:00!");
+        alert("Длительность раунда не может быть 00:00!");
         return;
       }
 
@@ -119,32 +134,30 @@
         lastUpdated: Date.now()
       });
       
-      startBtn.disabled = true;
-      pauseBtn.disabled = false;
-      resetBtn.disabled = false;
-    });
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('pauseBtn').disabled = false;
+      document.getElementById('resetBtn').disabled = false;
+    }
 
-    // Обработчик кнопки "Пауза"
-    pauseBtn.addEventListener('click', () => {
+    function togglePause() {
       database.ref('timer/isRunning').transaction((current) => {
         return current === null ? null : !current;
       });
-    });
+    }
 
-    // Обработчик кнопки "Сброс"
-    resetBtn.addEventListener('click', () => {
+    function resetTimer() {
       database.ref('timer').remove();
-    });
+    }
 
     // Синхронизация состояния
     database.ref('timer').on('value', (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        resetInterface();
+        resetUI();
         return;
       }
 
-      updateInterface(data);
+      updateUI(data);
       
       // Автоматический переход между раундами
       if (data.isRunning && data.timeLeft <= 0) {
@@ -159,8 +172,7 @@
       }
     });
 
-    // Обновление интерфейса
-    function updateInterface(data) {
+    function updateUI(data) {
       const mins = Math.floor(data.timeLeft / 60).toString().padStart(2, '0');
       const secs = (data.timeLeft % 60).toString().padStart(2, '0');
       
@@ -169,18 +181,19 @@
         `Раунд: ${data.currentRound}/${data.totalRounds}`;
 
       if (isHost) {
-        pauseBtn.textContent = data.isRunning ? 'Пауза' : 'Продолжить';
+        document.getElementById('pauseBtn').textContent = 
+          data.isRunning ? 'Пауза' : 'Продолжить';
       }
     }
 
-    function resetInterface() {
+    function resetUI() {
       document.getElementById('timer').textContent = '00:00';
       document.getElementById('roundInfo').textContent = 'Раунд: -/-';
       
       if (isHost) {
-        startBtn.disabled = false;
-        pauseBtn.disabled = true;
-        resetBtn.disabled = true;
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('pauseBtn').disabled = true;
+        document.getElementById('resetBtn').disabled = true;
       }
     }
   </script>
