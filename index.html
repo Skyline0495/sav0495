@@ -1,86 +1,123 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Синхронный таймер</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 20px; }
-        #timer { font-size: 72px; margin: 20px; color: #333; }
-        button { 
-            padding: 12px 24px; 
-            font-size: 18px; 
-            background: #4CAF50; 
-            color: white; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-        }
-        #hostControls { margin: 20px; }
-    </style>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <meta charset="UTF-8">
+  <title>Синхронный таймер</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .timer {
+      font-size: 72px;
+      margin: 20px 0;
+      color: #2c3e50;
+      font-weight: bold;
+    }
+    .controls {
+      margin: 20px;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 18px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+    }
+    input {
+      padding: 10px;
+      font-size: 16px;
+      width: 60px;
+      text-align: center;
+      margin: 0 5px;
+    }
+    #hostPanel {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px auto;
+      max-width: 500px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Синхронный таймер</h1>
-    <div id="timer">00:00</div>
-
-    <div id="hostControls">
-        <button id="startBtn">🚀 Старт (Только для хоста)</button>
+  <h1>Синхронный таймер</h1>
+  
+  <div class="timer" id="timer">00:00</div>
+  <div id="roundInfo">Раунд: -/-</div>
+  
+  <div id="hostPanel">
+    <h3>Панель управления</h3>
+    <div>
+      <label>Раундов: <input type="number" id="roundsInput" min="1" value="5"></label>
     </div>
+    <div>
+      <label>Длительность: 
+        <input type="number" id="minutesInput" min="0" max="59" value="5" placeholder="мин">
+        <input type="number" id="secondsInput" min="0" max="59" value="0" placeholder="сек">
+      </label>
+    </div>
+    <div class="controls">
+      <button id="startBtn">СТАРТ</button>
+      <button id="pauseBtn" disabled>ПАУЗА</button>
+      <button id="resetBtn" disabled>СБРОС</button>
+    </div>
+  </div>
 
-    <script>
-        // Ваши настройки Firebase (я подставил их из вашего скриншота)
-        const firebaseConfig = {
-            apiKey: "A1zaSyDoCb9XRTBwXsjWLsaDgFvGh2c1H6DSHgA",
-            authDomain: "superTimer-dc53c.firebaseapp.com",
-            databaseURL: "https://superTimer-dc53c-defaulf-rtdb.europe-west1.firebasedatabase.app",
-            projectId: "superTimer-dc53c",
-            storageBucket: "superTimer-dc53c.appspot.com",
-            messagingSenderId: "624576534672",
-            appId: "1:624576534672:web:5eae9e01aa1ba8114c6015"
-        };
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  
+  <script>
+    // Конфигурация Firebase (ЗАМЕНИТЕ НА СВОЮ!)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoCb9XRTBwXsjWLsaDgFvGh2c1H6DSHgA",
+      authDomain: "superTimer-dc53c.firebaseapp.com",
+      databaseURL: "https://superTimer-dc53c-defaulf-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "superTimer-dc53c",
+      storageBucket: "superTimer-dc53c.appspot.com",
+      messagingSenderId: "624576534672",
+      appId: "1:624576534672:web:5eae9e01aa1ba8114c6015"
+    };
 
-        // Инициализация Firebase
-        firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+    // Инициализация Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
 
-        // Проверяем, хост ли это
-        const isHost = window.location.hash === "#host";
-        if (!isHost) document.getElementById('hostControls').style.display = 'none';
+    // Проверка роли (хост/участник)
+    const isHost = window.location.hash === "#host";
+    if (!isHost) document.getElementById('hostPanel').style.display = 'none';
 
-        // Запуск таймера (только для хоста)
-        document.getElementById('startBtn').addEventListener('click', () => {
-            if (!isHost) return;
-            
-            // Настройки таймера (5 раундов по 5 минут)
-            const settings = {
-                timeLeft: 300, // 5 минут в секундах
-                currentRound: 1,
-                totalRounds: 5,
-                isRunning: true
-            };
-            
-            // Отправляем данные в Firebase
-            database.ref('timer').set(settings);
-            
-            // Запускаем отсчет
-            setInterval(() => {
-                database.ref('timer/timeLeft').transaction((current) => {
-                    return current > 0 ? current - 1 : 0;
-                });
-            }, 1000);
-        });
+    // Запуск таймера
+    document.getElementById('startBtn').addEventListener('click', function() {
+      const totalRounds = parseInt(document.getElementById('roundsInput').value) || 5;
+      const minutes = parseInt(document.getElementById('minutesInput').value) || 0;
+      const seconds = parseInt(document.getElementById('secondsInput').value) || 0;
+      
+      // Проверка времени
+      if (minutes === 0 && seconds === 0) {
+        alert("Ошибка! Укажите длительность раунда");
+        return;
+      }
 
-        // Синхронизация для всех участников
-        database.ref('timer').on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) return;
-            
-            // Форматируем время (05:00)
-            const mins = String(Math.floor(data.timeLeft / 60)).padStart(2, '0');
-            const secs = String(data.timeLeft % 60).padStart(2, '0');
-            document.getElementById('timer').textContent = `${mins}:${secs}`;
-        });
-    </script>
-</body>
-</html>
+      const roundDuration = (minutes * 60) + seconds;
+      
+      database.ref('timer').set({
+        currentRound: 1,
+        totalRounds: totalRounds,
+        timeLeft: roundDuration,
+        roundDuration: roundDuration,
+        isRunning: true
+      });
+      
+      this.disabled = true;
+      document.getElementById('pauseBtn').disabled = false
