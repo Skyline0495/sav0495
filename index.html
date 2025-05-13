@@ -18,7 +18,7 @@
     }
     #roundInfo {
       font-size: 24px;
-      margin: 10px 0;
+      color: #34495e;
     }
     #hostPanel {
       background: #f8f9fa;
@@ -67,7 +67,7 @@
       <label>Раундов: <input type="number" id="roundsInput" min="1" value="3"></label>
     </div>
     <div>
-      <label>Длительность: 
+      <label>Длительность:
         <input type="number" id="minutesInput" min="0" max="59" value="1" placeholder="мин">
         <input type="number" id="secondsInput" min="0" max="59" value="30" placeholder="сек">
       </label>
@@ -78,134 +78,130 @@
   </div>
 
   <script>
-    if (!firebase.apps.length) {
-      const firebaseConfig = {
-        apiKey: "AIzaSyDoCb9XRTBwXsjWLsaDgFvGh2c1H6DSHgA",
-        authDomain: "superTimer-dc53c.firebaseapp.com",
-        databaseURL: "https://superTimer-dc53c-default-rtdb.europe-west1.firebasedatabase.app",
-        projectId: "superTimer-dc53c",
-        storageBucket: "superTimer-dc53c.appspot.com",
-        messagingSenderId: "624576534672",
-        appId: "1:624576534672:web:5eae9e01aa1ba8114c6015"
-      };
-      firebase.initializeApp(firebaseConfig);
-    }
+    // Firebase конфигурация
+    const firebaseConfig = {
+      apiKey: "AIzaSyDoCb9XRTBwXsjWLsaDgFvGh2c1H6DSHgA",
+      authDomain: "superTimer-dc53c.firebaseapp.com",
+      databaseURL: "https://superTimer-dc53c-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "superTimer-dc53c",
+      storageBucket: "superTimer-dc53c.appspot.com",
+      messagingSenderId: "624576534672",
+      appId: "1:624576534672:web:5eae9e01aa1ba8114c6015"
+    };
 
+    firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
     const isHost = window.location.hash === "#host";
-    if (!isHost) document.getElementById("hostPanel").style.display = "none";
+    if (!isHost) document.getElementById('hostPanel').style.display = 'none';
+
+    let countdownInterval = null;
 
     if (isHost) {
       firebase.auth().signInAnonymously()
         .then(() => {
-          console.log("Хост авторизован в Firebase");
+          console.log("Хост авторизован");
           initTimerControls();
         })
-        .catch(error => {
-          console.error("Ошибка авторизации:", error);
-          alert("Ошибка доступа! Обновите страницу (Ctrl+F5)");
+        .catch(err => {
+          alert("Ошибка авторизации. Перезагрузите страницу.");
+          console.error(err);
         });
     }
 
     function initTimerControls() {
-      document.getElementById("startBtn").addEventListener("click", startTimer);
-      document.getElementById("pauseBtn").addEventListener("click", togglePause);
-      document.getElementById("resetBtn").addEventListener("click", resetTimer);
+      document.getElementById('startBtn').addEventListener('click', startTimer);
+      document.getElementById('pauseBtn').addEventListener('click', togglePause);
+      document.getElementById('resetBtn').addEventListener('click', resetTimer);
+      startCountdownLoop();
     }
 
     function startTimer() {
-      const totalRounds = parseInt(document.getElementById("roundsInput").value) || 3;
-      const minutes = parseInt(document.getElementById("minutesInput").value) || 0;
-      const seconds = parseInt(document.getElementById("secondsInput").value) || 0;
+      const rounds = parseInt(document.getElementById('roundsInput').value) || 3;
+      const min = parseInt(document.getElementById('minutesInput').value) || 0;
+      const sec = parseInt(document.getElementById('secondsInput').value) || 0;
+      const duration = min * 60 + sec;
 
-      if (minutes === 0 && seconds === 0) {
-        alert("Длительность раунда не может быть 00:00!");
-        return;
-      }
+      if (duration === 0) return alert("Длительность не может быть 00:00");
 
-      const roundDuration = (minutes * 60) + seconds;
-
-      database.ref("timer").set({
+      database.ref('timer').set({
         currentRound: 1,
-        totalRounds: totalRounds,
-        timeLeft: roundDuration,
-        roundDuration: roundDuration,
+        totalRounds: rounds,
+        timeLeft: duration,
+        roundDuration: duration,
         isRunning: true,
         lastUpdated: Date.now()
       });
 
-      document.getElementById("startBtn").disabled = true;
-      document.getElementById("pauseBtn").disabled = false;
-      document.getElementById("resetBtn").disabled = false;
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('pauseBtn').disabled = false;
+      document.getElementById('resetBtn').disabled = false;
     }
 
     function togglePause() {
-      database.ref("timer/isRunning").transaction(current => {
-        return current === null ? null : !current;
-      });
+      database.ref('timer/isRunning').transaction(current => current === null ? null : !current);
     }
 
     function resetTimer() {
-      database.ref("timer").remove();
+      database.ref('timer').remove();
+      if (countdownInterval) clearInterval(countdownInterval);
     }
 
-    let localTimer = null;
+    function startCountdownLoop() {
+      if (!isHost) return;
 
-    database.ref("timer").on("value", (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        clearInterval(localTimer);
-        resetUI();
-        return;
-      }
+      countdownInterval = setInterval(() => {
+        database.ref('timer').once('value').then(snapshot => {
+          const data = snapshot.val();
+          if (!data || !data.isRunning) return;
 
-      updateUI(data);
-
-      clearInterval(localTimer);
-      if (data.isRunning) {
-        localTimer = setInterval(() => {
           const now = Date.now();
           const elapsed = Math.floor((now - data.lastUpdated) / 1000);
-          const newTimeLeft = Math.max(0, data.timeLeft - elapsed);
+          const newTimeLeft = Math.max(data.timeLeft - elapsed, 0);
 
           if (newTimeLeft !== data.timeLeft) {
-            database.ref("timer/timeLeft").set(newTimeLeft);
+            database.ref('timer').update({
+              timeLeft: newTimeLeft,
+              lastUpdated: now
+            });
           }
 
           if (newTimeLeft === 0 && data.currentRound < data.totalRounds) {
-            database.ref("timer").update({
+            database.ref('timer').update({
               currentRound: data.currentRound + 1,
               timeLeft: data.roundDuration,
               lastUpdated: Date.now()
             });
-          } else if (newTimeLeft === 0 && data.currentRound >= data.totalRounds) {
-            database.ref("timer/isRunning").set(false);
           }
-        }, 1000);
-      }
+        });
+      }, 1000);
+    }
+
+    database.ref('timer').on('value', snapshot => {
+      const data = snapshot.val();
+      if (!data) return resetUI();
+
+      updateUI(data);
     });
 
     function updateUI(data) {
-      const mins = Math.floor(data.timeLeft / 60).toString().padStart(2, '0');
-      const secs = (data.timeLeft % 60).toString().padStart(2, '0');
-
-      document.getElementById("timer").textContent = `${mins}:${secs}`;
-      document.getElementById("roundInfo").textContent = `Раунд: ${data.currentRound}/${data.totalRounds}`;
+      const mins = String(Math.floor(data.timeLeft / 60)).padStart(2, '0');
+      const secs = String(data.timeLeft % 60).padStart(2, '0');
+      document.getElementById('timer').textContent = `${mins}:${secs}`;
+      document.getElementById('roundInfo').textContent = `Раунд: ${data.currentRound}/${data.totalRounds}`;
 
       if (isHost) {
-        document.getElementById("pauseBtn").textContent = data.isRunning ? "Пауза" : "Продолжить";
+        document.getElementById('pauseBtn').textContent = data.isRunning ? 'Пауза' : 'Продолжить';
       }
     }
 
     function resetUI() {
-      document.getElementById("timer").textContent = "00:00";
-      document.getElementById("roundInfo").textContent = "Раунд: -/-";
-
+      document.getElementById('timer').textContent = '00:00';
+      document.getElementById('roundInfo').textContent = 'Раунд: -/-';
       if (isHost) {
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("pauseBtn").disabled = true;
-        document.getElementById("resetBtn").disabled = true;
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('pauseBtn').disabled = true;
+        document.getElementById('resetBtn').disabled = true;
       }
     }
   </script>
